@@ -16,8 +16,8 @@ Frame.Active = true
 Frame.Draggable = true
 
 local Aimlock = false
-local WallCheck = true
-local TeamCheck = true
+local WallCheck = false
+local TeamCheck = false
 local Target = nil
 
 local function createButton(name, pos, callback)
