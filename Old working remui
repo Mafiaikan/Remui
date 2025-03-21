@@ -1,0 +1,186 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = game.Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- UI Setup
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.ResetOnSpawn = false
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 200, 0, 150) -- Bigger UI
+Frame.Position = UDim2.new(0.4, 0, 0.4, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Black background
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+
+local Aimlock = false
+local WallCheck = true
+local TeamCheck = true
+local Target = nil
+
+local function createButton(name, pos, callback)
+    local button = Instance.new("TextButton", Frame)
+    button.Size = UDim2.new(0.8, 0, 0.2, 0) -- Bigger buttons
+    button.Position = UDim2.new(0.1, 0, pos, 0)
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    button.Text = name .. ": OFF"
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+    button.MouseButton1Click:Connect(function()
+        local state = callback()
+        button.Text = name .. ": " .. (state and "ON" or "OFF")
+    end)
+end
+
+createButton("Aimlock", 0.1, function()
+    Aimlock = not Aimlock
+    return Aimlock
+end)
+
+createButton("WallCheck", 0.4, function()
+    WallCheck = not WallCheck
+    return WallCheck
+end)
+
+createButton("TeamCheck", 0.7, function()
+    TeamCheck = not TeamCheck
+    return TeamCheck
+end)
+
+-- WallCheck Function (Thicker)
+local function IsVisible(target)
+    if not target or not target.Parent then return false end
+    local origin = Camera.CFrame.Position
+    local direction = (target.Position - origin).unit * (target.Position - origin).Magnitude
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.IgnoreWater = true
+
+    local result = game.Workspace:Raycast(origin, direction, raycastParams)
+
+    if result and result.Instance then
+        return result.Instance:IsDescendantOf(target.Parent)
+    end
+    return true
+end
+
+local function WallCheckLoop()
+    while true do
+        if WallCheck and Target then
+            if not IsVisible(Target) then
+                Target = nil
+            end
+        end
+        task.wait(0.1) -- 10 FPS Scan Rate
+    end
+end
+task.spawn(WallCheckLoop)
+
+function GetClosestPlayer()
+    local maxDistance = math.huge
+    local closestPlayer = nil
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and (not TeamCheck or player.Team ~= LocalPlayer.Team) then
+            if player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                if head and humanoid and humanoid.Health > 0 then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                    if onScreen then
+                        if not WallCheck or IsVisible(head) then
+                            local distance = (Camera.CFrame.Position - head.Position).Magnitude
+                            if distance < maxDistance then
+                                maxDistance = distance
+                                closestPlayer = head
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    Camera = game.Workspace.CurrentCamera
+    Target = nil
+end)
+
+-- **85% Sharp Aimlock**
+local function UpdateAimlock()
+    while true do
+        if Aimlock then
+            if not Target or (Target.Parent and Target.Parent:FindFirstChildOfClass("Humanoid") and Target.Parent:FindFirstChildOfClass("Humanoid").Health <= 0) then
+                Target = GetClosestPlayer()
+            end
+            if Target then
+                local currentCFrame = Camera.CFrame
+                local targetCFrame = CFrame.new(Camera.CFrame.Position, Target.Position)
+                Camera.CFrame = currentCFrame:Lerp(targetCFrame, 0.85) -- 85% Sharpness
+            end
+        end
+        task.wait()
+    end
+end
+task.spawn(UpdateAimlock)
+
+-- Show UI Button (♦ Icon, Black Circle)
+local ShowUIButton = Instance.new("TextButton", ScreenGui)
+ShowUIButton.Size = UDim2.new(0, 50, 0, 50)
+ShowUIButton.Position = UDim2.new(0.9, 0, 0.05, 0)
+ShowUIButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Black Circle
+ShowUIButton.Text = "♦"
+ShowUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ShowUIButton.TextSize = 24
+ShowUIButton.ZIndex = 4
+ShowUIButton.Active = true
+ShowUIButton.Draggable = true
+ShowUIButton.ClipsDescendants = true
+
+-- Make it a perfect circle
+local UICorner = Instance.new("UICorner", ShowUIButton)
+UICorner.CornerRadius = UDim.new(1, 0) -- Fully rounded
+
+ShowUIButton.MouseButton1Click:Connect(function()
+    Frame.Visible = not Frame.Visible
+end)
+
+-- Destroy UI Button (Red X)
+local DestroyUIButton = Instance.new("TextButton", Frame)
+DestroyUIButton.Size = UDim2.new(0.2, 0, 0.2, 0)
+DestroyUIButton.Position = UDim2.new(0.8, 0, 0, 0) -- Top Right
+DestroyUIButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red X
+DestroyUIButton.Text = "X"
+DestroyUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyUIButton.TextSize = 14
+
+DestroyUIButton.MouseButton1Click:Connect(function()
+    local ConfirmFrame = Instance.new("Frame", ScreenGui)
+    ConfirmFrame.Size = UDim2.new(0, 180, 0, 100)
+    ConfirmFrame.Position = UDim2.new(0.4, 0, 0.4, 0)
+    ConfirmFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+
+    local ConfirmText = Instance.new("TextLabel", ConfirmFrame)
+    ConfirmText.Size = UDim2.new(1, 0, 0.5, 0)
+    ConfirmText.Text = "Are you sure you want to destroy UI?"
+    ConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+    local NoButton = Instance.new("TextButton", ConfirmFrame)
+    NoButton.Size = UDim2.new(0.4, 0, 0.3, 0)
+    NoButton.Position = UDim2.new(0.1, 0, 0.6, 0)
+    NoButton.BackgroundColor3 = Color3.fromRGB(0, 0, 255)
+    NoButton.Text = "No"
+    NoButton.MouseButton1Click:Connect(function() ConfirmFrame:Destroy() end)
+
+    local YesButton = Instance.new("TextButton", ConfirmFrame)
+    YesButton.Size = UDim2.new(0.4, 0, 0.3, 0)
+    YesButton.Position = UDim2.new(0.5, 0, 0.6, 0)
+    YesButton.BackgroundColor3 = Color3.fromRGB(128, 128, 128)
+    YesButton.Text = "Yes"
+    YesButton.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+end)
