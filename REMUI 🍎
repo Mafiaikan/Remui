@@ -1,0 +1,189 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+-- UI Setup
+local Remui = Instance.new("ScreenGui")
+Remui.Name = "Remui"
+Remui.Parent = game.CoreGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 250, 0, 150)
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -75)
+MainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+MainFrame.Draggable = true
+MainFrame.Active = true
+MainFrame.Parent = Remui
+
+local Title = Instance.new("TextLabel")
+Title.Text = "Remui 🍎"
+Title.Size = UDim2.new(1, 0, 0, 20)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Parent = MainFrame
+
+-- Aimlock Toggle
+local AimlockEnabled = false
+local AimlockButton = Instance.new("TextButton")
+AimlockButton.Text = "Aimlock [OFF]"
+AimlockButton.Size = UDim2.new(1, 0, 0, 30)
+AimlockButton.Position = UDim2.new(0, 0, 0, 30)
+AimlockButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+AimlockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AimlockButton.Parent = MainFrame
+
+-- Hide & Destroy UI Buttons
+local HideButton = Instance.new("TextButton")
+HideButton.Text = "-"
+HideButton.Size = UDim2.new(0, 20, 0, 20)
+HideButton.Position = UDim2.new(1, -40, 0, 0)
+HideButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+HideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+HideButton.Parent = MainFrame
+
+local DestroyButton = Instance.new("TextButton")
+DestroyButton.Text = "X"
+DestroyButton.Size = UDim2.new(0, 20, 0, 20)
+DestroyButton.Position = UDim2.new(1, -20, 0, 0)
+DestroyButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+DestroyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyButton.Parent = MainFrame
+
+-- Hide UI Functionality
+local ShowUIButton = Instance.new("TextButton")
+ShowUIButton.Text = "♦"
+ShowUIButton.Size = UDim2.new(0, 50, 0, 50)
+ShowUIButton.Position = UDim2.new(0.5, -25, 0.9, 0)
+ShowUIButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+ShowUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ShowUIButton.Visible = false
+ShowUIButton.Draggable = true
+ShowUIButton.Parent = Remui
+
+HideButton.MouseButton1Click:Connect(function()
+	MainFrame.Visible = false
+	ShowUIButton.Visible = true
+end)
+
+ShowUIButton.MouseButton1Click:Connect(function()
+	MainFrame.Visible = true
+	ShowUIButton.Visible = false
+end)
+
+DestroyButton.MouseButton1Click:Connect(function()
+	local ConfirmPanel = Instance.new("Frame")
+	ConfirmPanel.Size = UDim2.new(0, 200, 0, 100)
+	ConfirmPanel.Position = UDim2.new(0.5, -100, 0.5, -50)
+	ConfirmPanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	ConfirmPanel.Parent = Remui
+
+	local ConfirmText = Instance.new("TextLabel")
+	ConfirmText.Text = "Are you sure you want to destroy UI?"
+	ConfirmText.Size = UDim2.new(1, 0, 0, 40)
+	ConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ConfirmText.Parent = ConfirmPanel
+
+	local YesButton = Instance.new("TextButton")
+	YesButton.Text = "Yes"
+	YesButton.Size = UDim2.new(0.5, 0, 0, 30)
+	YesButton.Position = UDim2.new(0, 0, 1, -30)
+	YesButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+	YesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	YesButton.Parent = ConfirmPanel
+
+	local NoButton = Instance.new("TextButton")
+	NoButton.Text = "No"
+	NoButton.Size = UDim2.new(0.5, 0, 0, 30)
+	NoButton.Position = UDim2.new(0.5, 0, 1, -30)
+	NoButton.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
+	NoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	NoButton.Parent = ConfirmPanel
+
+	YesButton.MouseButton1Click:Connect(function()
+		Remui:Destroy()
+	end)
+
+	NoButton.MouseButton1Click:Connect(function()
+		ConfirmPanel:Destroy()
+	end)
+end)
+
+-- Aimlock Functionality
+local function GetClosestPlayer()
+	local ClosestPlayer = nil
+	local ShortestDistance = math.huge
+
+	for _, Player in pairs(Players:GetPlayers()) do
+		if Player ~= LocalPlayer and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+			local Position, OnScreen = Camera:WorldToViewportPoint(Player.Character.HumanoidRootPart.Position)
+			if OnScreen then
+				local Distance = (Vector2.new(Position.X, Position.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+				if Distance < ShortestDistance then
+					ClosestPlayer = Player
+					ShortestDistance = Distance
+				end
+			end
+		end
+	end
+
+	return ClosestPlayer
+end
+
+local LockedTarget = nil
+RunService.RenderStepped:Connect(function()
+	if AimlockEnabled and LockedTarget and LockedTarget.Character and LockedTarget.Character:FindFirstChild("HumanoidRootPart") then
+		Camera.CFrame = CFrame.new(Camera.CFrame.Position, LockedTarget.Character.HumanoidRootPart.Position)
+	end
+end)
+
+AimlockButton.MouseButton1Click:Connect(function()
+	AimlockEnabled = not AimlockEnabled
+	AimlockButton.Text = "Aimlock [" .. (AimlockEnabled and "ON" or "OFF") .. "]"
+
+	if AimlockEnabled then
+		LockedTarget = GetClosestPlayer()
+	else
+		LockedTarget = nil
+	end
+end)
+
+-- Dragging System
+local function MakeDraggable(Frame)
+	local Dragging, DragInput, DragStart, StartPos
+
+	Frame.InputBegan:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+			Dragging = true
+			DragStart = Input.Position
+			StartPos = Frame.Position
+
+			Input.Changed:Connect(function()
+				if Input.UserInputState == Enum.UserInputState.End then
+					Dragging = false
+				end
+			end)
+		end
+	end)
+
+	Frame.InputChanged:Connect(function(Input)
+		if Input.UserInputType == Enum.UserInputType.MouseMovement then
+			DragInput = Input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(Input)
+		if Input == DragInput and Dragging then
+			local Delta = Input.Position - DragStart
+			Frame.Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + Delta.X, StartPos.Y.Scale, StartPos.Y.Offset + Delta.Y)
+		end
+	end)
+end
+
+MakeDraggable(MainFrame)
+MakeDraggable(ShowUIButton)
