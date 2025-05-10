@@ -1,6 +1,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Camera = game.Workspace.CurrentCamera
+local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 -- UI Setup
@@ -8,25 +8,24 @@ local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.ResetOnSpawn = false
 
 local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 200, 0, 150) -- Bigger UI
+Frame.Size = UDim2.new(0, 200, 0, 180)
 Frame.Position = UDim2.new(0.4, 0, 0.4, 0)
-Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Black background
+Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 Frame.BorderSizePixel = 0
 Frame.Active = true
 Frame.Draggable = true
+Frame.Visible = true
 
-local Aimlock = false
-local WallCheck = false
-local TeamCheck = false
+local Aimlock, WallCheck, TeamCheck, ESPEnabled = false, false, false, false
 local Target = nil
 
 local function createButton(name, pos, callback)
     local button = Instance.new("TextButton", Frame)
-    button.Size = UDim2.new(0.8, 0, 0.2, 0) -- Bigger buttons
+    button.Size = UDim2.new(0.8, 0, 0.15, 0)
     button.Position = UDim2.new(0.1, 0, pos, 0)
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     button.Text = name .. ": OFF"
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextColor3 = Color3.new(1, 1, 1)
     button.TextSize = 14
     button.MouseButton1Click:Connect(function()
         local state = callback()
@@ -34,129 +33,177 @@ local function createButton(name, pos, callback)
     end)
 end
 
-createButton("Aimlock", 0.1, function()
+createButton("Aimlock", 0.05, function()
     Aimlock = not Aimlock
     return Aimlock
 end)
 
-createButton("WallCheck", 0.4, function()
+createButton("WallCheck", 0.25, function()
     WallCheck = not WallCheck
     return WallCheck
 end)
 
-createButton("TeamCheck", 0.7, function()
+createButton("TeamCheck", 0.45, function()
     TeamCheck = not TeamCheck
     return TeamCheck
 end)
 
--- WallCheck Function (Thicker)
-local function IsVisible(target)
-    if not target or not target.Parent then return false end
+createButton("ESP", 0.65, function()
+    ESPEnabled = not ESPEnabled
+    return ESPEnabled
+end)
+
+-- ESP functions
+local function getTeamCount()
+    local teams = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Team then
+            teams[player.Team] = true
+        end
+    end
+    local count = 0
+    for _ in pairs(teams) do
+        count += 1
+    end
+    return count
+end
+
+local function createESP(player)
+    if not player.Character then return end
+    local name = "ESPHighlight_" .. player.Name
+    local existing = game.CoreGui:FindFirstChild(name)
+    if existing then existing:Destroy() end
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = name
+    highlight.Adornee = player.Character
+    highlight.FillColor = player.TeamColor.Color
+    highlight.FillTransparency = 0.4
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+
+    if getTeamCount() <= 1 then
+        highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+    else
+        highlight.OutlineColor = player.TeamColor.Color
+    end
+
+    highlight.Parent = game.CoreGui
+end
+
+local function clearAllESP()
+    for _, v in pairs(game.CoreGui:GetChildren()) do
+        if v:IsA("Highlight") and v.Name:find("ESPHighlight_") then
+            v:Destroy()
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        if ESPEnabled then
+            clearAllESP()
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                    if not TeamCheck or player.Team ~= LocalPlayer.Team then
+                        createESP(player)
+                    end
+                end
+            end
+        else
+            clearAllESP()
+        end
+        task.wait(1.45)
+    end
+end)
+
+-- WallCheck Function
+local function IsVisible(part)
+    if not part or not part.Parent then return false end
     local origin = Camera.CFrame.Position
-    local direction = (target.Position - origin).unit * (target.Position - origin).Magnitude
+    local direction = (part.Position - origin).Unit * (part.Position - origin).Magnitude
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     raycastParams.IgnoreWater = true
-
-    local result = game.Workspace:Raycast(origin, direction, raycastParams)
-
-    if result and result.Instance then
-        return result.Instance:IsDescendantOf(target.Parent)
-    end
-    return true
+    local result = workspace:Raycast(origin, direction, raycastParams)
+    return not result or result.Instance:IsDescendantOf(part.Parent)
 end
-
-local function WallCheckLoop()
-    while true do
-        if WallCheck and Target then
-            if not IsVisible(Target) then
-                Target = nil
-            end
-        end
-        task.wait(0.1) -- 10 FPS Scan Rate
-    end
-end
-task.spawn(WallCheckLoop)
 
 function GetClosestPlayer()
-    local maxDistance = math.huge
-    local closestPlayer = nil
+    local closest, maxDist = nil, math.huge
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and (not TeamCheck or player.Team ~= LocalPlayer.Team) then
-            if player.Character then
-                local head = player.Character:FindFirstChild("Head")
-                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-                if head and humanoid and humanoid.Health > 0 then
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                    if onScreen then
-                        if not WallCheck or IsVisible(head) then
-                            local distance = (Camera.CFrame.Position - head.Position).Magnitude
-                            if distance < maxDistance then
-                                maxDistance = distance
-                                closestPlayer = head
-                            end
+            local char, head, hum = player.Character, nil, nil
+            if char then
+                head = char:FindFirstChild("Head")
+                hum = char:FindFirstChildOfClass("Humanoid")
+            end
+            if head and hum and hum.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    if not WallCheck or IsVisible(head) then
+                        local dist = (Camera.CFrame.Position - head.Position).Magnitude
+                        if dist < maxDist then
+                            maxDist = dist
+                            closest = head
                         end
                     end
                 end
             end
         end
     end
-    return closestPlayer
+    return closest
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
-    Camera = game.Workspace.CurrentCamera
+    Camera = workspace.CurrentCamera
     Target = nil
 end)
 
--- **85% Sharp Aimlock**
-local function UpdateAimlock()
+task.spawn(function()
     while true do
         if Aimlock then
             if not Target or (Target.Parent and Target.Parent:FindFirstChildOfClass("Humanoid") and Target.Parent:FindFirstChildOfClass("Humanoid").Health <= 0) then
                 Target = GetClosestPlayer()
             end
             if Target then
-                local currentCFrame = Camera.CFrame
+                local current = Camera.CFrame
                 local targetCFrame = CFrame.new(Camera.CFrame.Position, Target.Position)
-                Camera.CFrame = currentCFrame:Lerp(targetCFrame, 0.85) -- 85% Sharpness
+                Camera.CFrame = current:Lerp(targetCFrame, 0.85)
             end
         end
         task.wait()
     end
-end
-task.spawn(UpdateAimlock)
+end)
 
--- Show UI Button (♦ Icon, Black Circle)
+-- Show UI Button
 local ShowUIButton = Instance.new("TextButton", ScreenGui)
 ShowUIButton.Size = UDim2.new(0, 50, 0, 50)
 ShowUIButton.Position = UDim2.new(0.9, 0, 0.05, 0)
-ShowUIButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Black Circle
+ShowUIButton.BackgroundColor3 = Color3.new(0, 0, 0)
 ShowUIButton.Text = "♦"
-ShowUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ShowUIButton.TextColor3 = Color3.new(1, 1, 1)
 ShowUIButton.TextSize = 24
 ShowUIButton.ZIndex = 4
 ShowUIButton.Active = true
 ShowUIButton.Draggable = true
-ShowUIButton.ClipsDescendants = true
 
--- Make it a perfect circle
 local UICorner = Instance.new("UICorner", ShowUIButton)
-UICorner.CornerRadius = UDim.new(1, 0) -- Fully rounded
+UICorner.CornerRadius = UDim.new(1, 0)
 
 ShowUIButton.MouseButton1Click:Connect(function()
     Frame.Visible = not Frame.Visible
 end)
 
--- Destroy UI Button (Red X)
+-- Destroy Button
 local DestroyUIButton = Instance.new("TextButton", Frame)
 DestroyUIButton.Size = UDim2.new(0.2, 0, 0.2, 0)
-DestroyUIButton.Position = UDim2.new(0.8, 0, 0, 0) -- Top Right
-DestroyUIButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red X
+DestroyUIButton.Position = UDim2.new(0.8, 0, 0, 0)
+DestroyUIButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 DestroyUIButton.Text = "X"
-DestroyUIButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyUIButton.TextColor3 = Color3.new(1, 1, 1)
 DestroyUIButton.TextSize = 14
 
 DestroyUIButton.MouseButton1Click:Connect(function()
@@ -168,7 +215,7 @@ DestroyUIButton.MouseButton1Click:Connect(function()
     local ConfirmText = Instance.new("TextLabel", ConfirmFrame)
     ConfirmText.Size = UDim2.new(1, 0, 0.5, 0)
     ConfirmText.Text = "Are you sure you want to destroy UI?"
-    ConfirmText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ConfirmText.TextColor3 = Color3.new(1, 1, 1)
 
     local NoButton = Instance.new("TextButton", ConfirmFrame)
     NoButton.Size = UDim2.new(0.4, 0, 0.3, 0)
